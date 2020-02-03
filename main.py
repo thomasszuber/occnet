@@ -16,23 +16,31 @@ import matplotlib.pyplot as plt
 
 import numpy.random as rd 
 
-import networkx as nx 
+import networkx as nx
+
+from scipy.optimize import minimize 
 
 
 # %% Classes  
-from classes import OccNet, RandomGraph
+from classes import OccNet, RandomGraph, Method, RandomDiGraph
 
 # %% Play with toys 
 
-G = RandomGraph(100,alpha=0.1)
+G = RandomDiGraph(30,alpha=0.1)
 
 new = OccNet(G)
 
 new.get_FE_wages()
 
+new.get_S()
+
 new.get_U()
 
-gap = new.get_wage_gap()
+res = new.get_equilibrium_thetas()
+
+
+
+
 
 # %%
 
