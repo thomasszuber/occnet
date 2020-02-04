@@ -32,13 +32,16 @@ G = RandomDiGraph(n,alpha=0.3,ergodic=True)
 
 # %%
 
-self = OccNet(G,y=rd.chisquare(2,n),b=0.1,s=0.3)
+#self = OccNet(G,y=rd.chisquare(2,n),b=0.1,s=0.3)
+
+self = OccNet(G,y=1,b=0.1,s=0.3)
 
 self.get_graph_properties()
 
 # %%
+method = Method(opt='bfgs',search_strategy="exogenous_distance")
 
-self.get_equilibrium_thetas(method=Method(opt='bfgs'))
+self.get_equilibrium_thetas(method=method)
 
 self.check_S()
 

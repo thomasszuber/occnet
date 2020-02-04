@@ -35,8 +35,10 @@ def RandomDiGraph(n,alpha=0.1,ergodic=True,seed=123):
 # %%
 
 class Method: 
-    def __init__(self,opt='Nelder-Mead'):
-        self.opt = opt 
+    def __init__(self,opt='Nelder-Mead',search_strategy='exogenous_neighbors',rho=1):
+        self.opt = opt
+        self.search_strategy = search_strategy
+        self.rho = rho 
 
 
 class OccNet:
@@ -87,6 +89,10 @@ class OccNet:
         self.eig = nx.eigenvector_centrality(self.g)
         self.katz = nx.katz_centrality(self.g)
         self.degree = nx.degree_centrality(self.g)
+        self.D = np.zeros((self.n,self.n))
+        for i,x in nx.shortest_path_length(self.g): 
+            for k,d in x.items():
+                self.D[i,k] = d
         
 
 # Update thetas: 
@@ -104,10 +110,18 @@ class OccNet:
 
 # Define optimal search strategy (matrix S)
 
-    def get_S(self): 
-        self.S = np.sum(self.G,axis=1)
-        self.S = self.G/self.S[:,None]
-        
+    def get_S(self,method=Method()): 
+        if method.search_strategy == 'exogenous_neighbors':
+            self.S = np.sum(self.G,axis=1)
+            self.S = self.G/self.S[:,None]
+        elif method.search_strategy == 'exogenous_distance':
+            self.S = np.exp(-method.rho*self.D)
+            self.S = self.S/self.S.sum(axis=1)[:,None]
+        elif method.search_strategy == 'endogenous_effort': 
+            # Solve fixed point problem for U and then: 
+            self.get_EU(method=method)
+            self.S = self.EU*self.p*np.exp(-method.rho*self.D)
+
 # Define continuous time transition matrix: 
     
     def get_PI(self):
@@ -157,26 +171,34 @@ class OccNet:
         
 # Method to solve for U 
 
-    def get_U(self):
-        A = np.diag(self.r + np.sum(self.S*self.p,axis=1))
-        B = self.b + np.sum(self.S*self.p*self.w,axis=1)/(self.r+self.s)
-        C = self.S*self.p*self.s/(self.r+self.s)
-        self.U = np.linalg.solve(A-C,B)
+    def get_U(self,method=Method()):
+        """ solve for U: AU = B + CU  
+        """
+        if method.search_strategy == 'endogenous_effort':
+            print()
+        else:
+            A = np.diag(self.r + np.sum(self.S*self.p,axis=1))
+            B = self.b + np.sum(self.S*self.p*self.w,axis=1)/(self.r+self.s)
+            C = self.S*self.p*self.s/(self.r+self.s)
+            self.U = np.linalg.solve(A-C,B)
 
     def get_E(self): 
         self.E = (self.w+self.s*self.U)/(self.s+self.r)
+    
+    def get_EU(self,method=Method()):
+        self.get_U(method=method)
+        self.get_E()
+        self.EU = np.repeat([self.E],self.n,axis=0)-self.U[:,None]
 
     def check_S(self,update=False):
-        self.get_E()
-        G = ((np.repeat([self.E],self.n,axis=0)-self.U[:,None]) >= 0.0)*self.G
-        S = np.sum(G,axis=1)
-        S = G/S[:,None]
+        self.get_EU()
+        S = self.EU*self.S
+        pb = np.where(S < 0)
         if update == True:
-            if not (S == self.S).all():
-                self.S = S
-                print("Updated search strategy.")
+            self.S[pb] = 0 
+            print("Updated search strategy.")
         else:
-            return (S == self.S).all()
+            print(f'{len(pb[0])} problem(s)')
         
 
 # Find wages consistent with the Nash bargaining condition  
@@ -186,23 +208,24 @@ class OccNet:
 
 # Method to get FE/NB wage gap 
 
-    def get_wage_gap(self,thetas):
+    def get_wage_gap(self,thetas,method=Method()):
         self.update_thetas(thetas)
         self.get_p()
         self.get_FE_wages()
-        self.get_S()
+        self.get_S(method=method)
         self.get_U()
         return np.sum((self.w-self.get_NB_wages())**2)
 
     def get_equilibrium_thetas(self,init_point=None,method=Method()):
         if init_point == None: 
             init_point = np.ones(self.n)
-        self.res = minimize(lambda x: self.get_wage_gap(x),init_point,method=method.opt)
+        self.res = minimize(lambda x: self.get_wage_gap(x,method=method),init_point,method=method.opt)
         if self.res.success == True:
             print('Equilibrium found')
             self.update_thetas(self.res.x)
             self.get_p()
             self.get_FE_wages()
+            self.get_S(method=method)
             self.get_pi()
         else:
             if method.opt != 'Nelder-Mead':
@@ -213,6 +236,7 @@ class OccNet:
                     self.update_thetas(self.res.x)
                     self.get_p()
                     self.get_FE_wages()
+                    self.get_S(method=method)
                     self.get_pi()
                 else: 
                     print('No equilibrium found.')
