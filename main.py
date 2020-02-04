@@ -26,25 +26,26 @@ from classes import OccNet, RandomGraph, Method, RandomDiGraph
 
 # %% Play with toys 
 
-G = RandomDiGraph(30,alpha=0.1)
+n = 10 
 
-new = OccNet(G)
+G = RandomDiGraph(n,alpha=0.3,ergodic=True)
 
-new.get_FE_wages()
+# %%
 
-new.get_S()
+self = OccNet(G,y=rd.chisquare(2,n),b=0.1,s=0.3)
 
-new.get_U()
+self.get_graph_properties()
 
-res = new.get_equilibrium_thetas()
+# %%
 
+self.get_equilibrium_thetas(method=Method(opt='bfgs'))
+
+self.check_S()
 
 
 
 
 # %%
 
-g = nx.DiGraph(G)
+pi2 = self.get_pi_discrete() # erreur quelque part dans get_pi_discrete 
 
-
-# %%
