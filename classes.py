@@ -30,7 +30,37 @@ def RandomDiGraph(n,alpha=0.1,ergodic=True,seed=123):
         for i in range(n-1):
             G[i,i+1] = 1
         G[n-1,0] = 1
-    return G 
+    return G
+
+def RandomDiGraph(n,alpha=0.1,ergodicity="ergodic",seed=123):
+    rd.seed(seed)
+    success = False
+    while  success == False:
+        G = (rd.rand(n,n) < alpha)*1
+        np.fill_diagonal(G,1)
+        if ergodicity == "cyclic": 
+            for i in range(n-1):
+                G[i,i+1] = 1
+                G[n-1,0] = 1
+            success = True 
+        elif ergodicity == "ergodic":
+            C = list(nx.strongly_connected_components(nx.DiGraph(G)))
+            L = [len(c) for c in C]
+            c = list(C[np.argmax(L)])
+            G = G[c,:][:,c]
+            success = G.shape[0] == n 
+    return G
+
+# %% Functional form assumptions 
+    
+# Matching function 
+    
+def job_finding(theta,alpha=0.5,m0=1):
+    return m0*np.power(theta,alpha) 
+
+def cost_of_distance(D,rho=1):
+    return np.exp(rho*D)
+
 
 # %%
 
@@ -55,7 +85,8 @@ class OccNet:
                 r=0.01,
                 s=0.03,
                 c=0.1,
-                alpha = 0.5):
+                job_finding=job_finding,
+                cost_of_distance=cost_of_distance):
         self.G = G
         self.n = G.shape[0]
         
@@ -77,7 +108,8 @@ class OccNet:
         self.c = c
         self.r = r
         self.s = s
-        self.alpha = alpha
+        self.job_finding = job_finding
+        self.cost_of_distance = cost_of_distance
         
 # Update graph properties 
     
@@ -93,15 +125,15 @@ class OccNet:
         for i,x in nx.shortest_path_length(self.g): 
             for k,d in x.items():
                 self.D[i,k] = d
-        
-
+        self.CHI = self.cost_of_distance(self.D)
+                
 # Update thetas: 
 
     def update_thetas(self,thetas):
         self.thetas = thetas 
 
     def get_p(self):
-        self.p = self.thetas**self.alpha
+        self.p = self.job_finding(self.thetas)
 
 # Find wages consistent with the free entry conditions
  
@@ -124,7 +156,7 @@ class OccNet:
         self.U = U 
         self.get_E()
         self.get_EU()
-        rU = self.b + 0.5*np.sum((self.EU*self.p*np.exp(-method.rho*self.D))**2,axis=1)
+        rU = self.b + 0.5*np.sum((self.EU*self.p/self.CHI)**2,axis=1)
         return la.norm(rU-self.r*self.U)
 
     def get_U_S(self,method=Method()):
@@ -139,7 +171,7 @@ class OccNet:
                 self.U = self.res_U.x
                 self.get_E()
                 self.get_EU()
-                self.S = self.EU*self.p*np.exp(-method.rho*self.D) ## First order condition 
+                self.S = self.EU*self.p/self.CHI ## First order condition 
                 self.S[self.S < 0] = 0 # Corner solutions
             else:
                 if method.opt != 'Nelder-Mead':
@@ -148,7 +180,7 @@ class OccNet:
                         self.U = self.res_U.x
                         self.get_E()
                         self.get_EU()
-                        self.S = self.EU*self.p*np.exp(-method.rho*self.D) ## First order condition 
+                        self.S = self.EU*self.p/self.CHI ## First order condition 
                         self.S[self.S < 0] = 0 # Corner solutions
                     else:
                         print("Unable to find fixed point for U")
@@ -163,7 +195,7 @@ class OccNet:
                 self.S = np.sum(self.G,axis=1)
                 self.S = self.G/self.S[:,None]
             elif method.search_strategy == 'exogenous_distance':
-                self.S = np.exp(-method.rho*self.D)
+                self.S = self.CHI
                 self.S = self.S/self.S.sum(axis=1)[:,None]
         
             # Derive U from linear system 

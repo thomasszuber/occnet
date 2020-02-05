@@ -26,9 +26,9 @@ from classes import OccNet, RandomGraph, Method, RandomDiGraph
 
 # %% Play with toys 
 
-n = 4 
+n = 7 
 
-G = RandomDiGraph(n,alpha=0.3,ergodic=True)
+G = RandomDiGraph(n,alpha=0.3,ergodicity="ergodic")
 
 # %%
 
