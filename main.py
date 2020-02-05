@@ -26,7 +26,7 @@ from classes import OccNet, RandomGraph, Method, RandomDiGraph
 
 # %% Play with toys 
 
-n = 3 
+n = 4 
 
 G = RandomDiGraph(n,alpha=0.3,ergodic=True)
 
@@ -45,8 +45,10 @@ self.get_equilibrium_thetas(method=method)
 
 # %%
 
-self.check_S()
+self.check_S(method=method)
 
+
+# %%
 
 # %%
 
