@@ -35,7 +35,7 @@ def RandomDiGraph(n,alpha=0.1,ergodic=True,seed=123):
 # %%
 
 class Method: 
-    def __init__(self,opt='Nelder-Mead',search_strategy='exogenous_neighbors',rho=1):
+    def __init__(self,opt='bfgs',search_strategy='exogenous_neighbors',rho=1):
         self.opt = opt
         self.search_strategy = search_strategy
         self.rho = rho 
@@ -107,20 +107,72 @@ class OccNet:
  
     def get_FE_wages(self):
         self.w = self.y - (self.r + self.s)*self.c*self.thetas/self.p
+        
+# Method to solve for E given U and FE wages 
+            
+    def get_E(self): 
+        self.E = (self.w+self.s*self.U)/(self.s+self.r)
+    
+# Method to recover the matrix of E-U gains: 
+        
+    def get_EU(self):
+        self.EU = np.repeat([self.E],self.n,axis=0)-self.U[:,None]
+        
+# Method to solve for U
+        
+    def map_U(self,U,method=Method()):
+        self.U = U 
+        self.get_E()
+        self.get_EU()
+        rU = self.b + 0.5*np.sum((self.EU*self.p*np.exp(-method.rho*self.D))**2,axis=1)
+        return la.norm(rU-self.r*self.U)
 
-# Define optimal search strategy (matrix S)
+    def get_U_S(self,method=Method()):
 
-    def get_S(self,method=Method()): 
-        if method.search_strategy == 'exogenous_neighbors':
-            self.S = np.sum(self.G,axis=1)
-            self.S = self.G/self.S[:,None]
-        elif method.search_strategy == 'exogenous_distance':
-            self.S = np.exp(-method.rho*self.D)
-            self.S = self.S/self.S.sum(axis=1)[:,None]
-        elif method.search_strategy == 'endogenous_effort': 
-            # Solve fixed point problem for U and then: 
-            self.get_EU(method=method)
-            self.S = self.EU*self.p*np.exp(-method.rho*self.D)
+        if method.search_strategy == 'endogenous_effort':
+            
+        # Fixed point problem for U
+            
+            self.get_U_S(method=Method('exogenous_distance')) # Intial guess
+            self.res_U = minimize(lambda U: self.map_U(U,method=method),self.U,method=method.opt)
+            if self.res_U.success:
+                self.U = self.res_U.x
+                self.get_E()
+                self.get_EU()
+                self.S = self.EU*self.p*np.exp(-method.rho*self.D) ## First order condition 
+                self.S[self.S < 0] = 0 # Corner solutions
+            else:
+                if method.opt != 'Nelder-Mead':
+                    self.res_U = minimize(lambda U: self.map_U(U),self.U,method='Nelder-Mead')
+                    if self.res_U.success:
+                        self.U = self.res_U.x
+                        self.get_E()
+                        self.get_EU()
+                        self.S = self.EU*self.p*np.exp(-method.rho*self.D) ## First order condition 
+                        self.S[self.S < 0] = 0 # Corner solutions
+                    else:
+                        print("Unable to find fixed point for U")
+        
+        else:
+        
+        # Exogenous search 
+            
+            # Compute exogenous "optimal" search strategy 
+            
+            if method.search_strategy == 'exogenous_neighbors':
+                self.S = np.sum(self.G,axis=1)
+                self.S = self.G/self.S[:,None]
+            elif method.search_strategy == 'exogenous_distance':
+                self.S = np.exp(-method.rho*self.D)
+                self.S = self.S/self.S.sum(axis=1)[:,None]
+        
+            # Derive U from linear system 
+            
+            A = np.diag(self.r + np.sum(self.S*self.p,axis=1))
+            B = self.b + np.sum(self.S*self.p*self.w,axis=1)/(self.r+self.s)
+            C = self.S*self.p*self.s/(self.r+self.s)
+            self.U = np.linalg.solve(A-C,B)
+
 
 # Define continuous time transition matrix: 
     
@@ -169,28 +221,11 @@ class OccNet:
         else: 
             print(f'1 not an eigenvalue at tol level {tol}')
         
-# Method to solve for U 
 
-    def get_U(self,method=Method()):
-        """ solve for U: AU = B + CU  
-        """
-        if method.search_strategy == 'endogenous_effort':
-            print()
-        else:
-            A = np.diag(self.r + np.sum(self.S*self.p,axis=1))
-            B = self.b + np.sum(self.S*self.p*self.w,axis=1)/(self.r+self.s)
-            C = self.S*self.p*self.s/(self.r+self.s)
-            self.U = np.linalg.solve(A-C,B)
 
-    def get_E(self): 
-        self.E = (self.w+self.s*self.U)/(self.s+self.r)
-    
-    def get_EU(self,method=Method()):
-        self.get_U(method=method)
+    def check_S(self,update=False,method=Method()):
+        self.get_U_S(method=method)
         self.get_E()
-        self.EU = np.repeat([self.E],self.n,axis=0)-self.U[:,None]
-
-    def check_S(self,update=False):
         self.get_EU()
         S = self.EU*self.S
         pb = np.where(S < 0)
@@ -212,9 +247,12 @@ class OccNet:
         self.update_thetas(thetas)
         self.get_p()
         self.get_FE_wages()
-        self.get_S(method=method)
-        self.get_U()
-        return np.sum((self.w-self.get_NB_wages())**2)
+        self.get_U_S(method=method)
+        if method.search_strategy == 'endogenous_effort':
+            if self.res_U.success == False: 
+                self.get_U_S(method=Method(search_strategy="exogenous_distance"))
+                print('Switched to exogenous distance')
+        return la.norm(self.w-self.get_NB_wages())
 
     def get_equilibrium_thetas(self,init_point=None,method=Method()):
         if init_point == None: 
@@ -225,7 +263,7 @@ class OccNet:
             self.update_thetas(self.res.x)
             self.get_p()
             self.get_FE_wages()
-            self.get_S(method=method)
+            self.get_U_S(method=method)
             self.get_pi()
         else:
             if method.opt != 'Nelder-Mead':
@@ -236,7 +274,7 @@ class OccNet:
                     self.update_thetas(self.res.x)
                     self.get_p()
                     self.get_FE_wages()
-                    self.get_S(method=method)
+                    self.get_U_S(method=method)
                     self.get_pi()
                 else: 
                     print('No equilibrium found.')

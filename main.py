@@ -26,7 +26,7 @@ from classes import OccNet, RandomGraph, Method, RandomDiGraph
 
 # %% Play with toys 
 
-n = 10 
+n = 3 
 
 G = RandomDiGraph(n,alpha=0.3,ergodic=True)
 
@@ -39,13 +39,13 @@ self = OccNet(G,y=1,b=0.1,s=0.3)
 self.get_graph_properties()
 
 # %%
-method = Method(opt='bfgs',search_strategy="exogenous_distance")
+method = Method(opt='Nelder-Mead',search_strategy="endogenous_effort")
 
 self.get_equilibrium_thetas(method=method)
 
+# %%
+
 self.check_S()
-
-
 
 
 # %%
