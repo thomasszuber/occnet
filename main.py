@@ -22,11 +22,11 @@ from scipy.optimize import minimize
 
 
 # %% Classes  
-from classes import OccNet, RandomGraph, Method, RandomDiGraph
+from classes import OccNet, Method, RandomDiGraph
 
 # %% Play with toys 
 
-n = 7 
+n = 10 
 
 G = RandomDiGraph(n,alpha=0.3,ergodicity="ergodic")
 
@@ -42,6 +42,10 @@ self.get_graph_properties()
 method = Method(opt='Nelder-Mead',search_strategy="endogenous_effort")
 
 self.get_equilibrium_thetas(method=method)
+
+# %% 
+
+self.get_pi()
 
 # %%
 
